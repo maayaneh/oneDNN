@@ -1,5 +1,5 @@
 /*******************************************************************************
-* Copyright 2019-2021 Intel Corporation
+* Copyright 2019-2022 Intel Corporation
 *
 * Licensed under the Apache License, Version 2.0 (the "License");
 * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@
 #include "common/c_types_map.hpp"
 #include "common/engine.hpp"
 #include "common/utils.hpp"
-#include "sycl/sycl_gpu_engine.hpp"
+#include "gpu/sycl/sycl_gpu_engine.hpp"
 #include "sycl/sycl_utils.hpp"
 
 #if DNNL_CPU_RUNTIME != DNNL_RUNTIME_NONE
