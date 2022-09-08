@@ -83,6 +83,11 @@ private:
     const Xbyak::Opmask postops_mask = Xbyak::Opmask(6);
     const Xbyak::Opmask vmask = k7;
 
+    /* force bit exact */
+    const Xbyak::Opmask odd_mask = Xbyak::Opmask(7);
+    const Xbyak::Opmask even_mask = k_load_dim_tail_mask_extended; // force_be not used in conjuction with
+                                                                   // extended mask (bf16)
+
     const Vmm vmm_tmp = Vmm(28);
     const Vmm vmm_saturation = Vmm(28);
     const Vmm vmm_one = Vmm(29);

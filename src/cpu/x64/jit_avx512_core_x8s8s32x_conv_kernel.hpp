@@ -107,6 +107,9 @@ private:
     const Xbyak::Opmask postops_mask = Xbyak::Opmask(4);
     const Xbyak::Opmask ktail_mask_extended = Xbyak::Opmask(5);
 
+    const Xbyak::Opmask odd_mask = Xbyak::Opmask(6);
+    const Xbyak::Opmask even_mask = Xbyak::Opmask(7);
+
     const Vmm vmm_wei = Vmm(31);
     /* used during bias section of store_output */
     const Vmm vmm_comp = Vmm(30); // only for signed input

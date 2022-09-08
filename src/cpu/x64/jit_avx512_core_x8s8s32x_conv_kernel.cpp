@@ -29,6 +29,8 @@
 
 #define GET_OFF(field) offsetof(jit_conv_call_s, field)
 
+#define FORCE_BIT_EXACT 1
+
 namespace dnnl {
 namespace impl {
 namespace cpu {
@@ -262,7 +264,7 @@ void _jit_avx512_core_x8s8s32x_fwd_kernel<Vmm>::store_output(
         p_sum_zp = &p_entry.sum.zero_point;
     }
 
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         /* put 'wei_adj_scale = 0.5' for bias calculation */
         mov(reg_bias_alpha, float2int(jcp.wei_adj_scale));
         vmovq(xmm_bias_alpha(), reg_bias_alpha);
@@ -277,7 +279,7 @@ void _jit_avx512_core_x8s8s32x_fwd_kernel<Vmm>::store_output(
             auto bias_addr = EVEX_compress_addr(reg_bias, bias_offset);
 
             cvt2ps(jcp.bia_dt, vmm_bias, bias_addr, mask_flag);
-            if (jcp.signed_input && (!jcp.has_vnni)) /* bias *= 0.5 */
+            if (apply_scale_adjust(jcp)) /* bias *= 0.5 */
                 vmulps(vmm_bias, vmm_bias, vmm_bias_alpha());
         }
         if (jcp.signed_input) {
@@ -617,9 +619,22 @@ void _jit_avx512_core_x8s8s32x_fwd_kernel<Vmm>::compute_ker(int ur_w, int pad_l,
         if (jcp.has_vnni) {
             vpdpbusd(vreg_acc, vreg_src, vreg_wei);
         } else {
-            vpmaddubsw(vmm_tmp, vreg_src, vreg_wei);
-            vpmaddwd(vmm_tmp, vmm_tmp, vmm_one);
-            vpaddd(vreg_acc, vreg_acc, vmm_tmp);
+            if (jcp.force_be) {
+                // process even values
+                vmovdqu8(vmm_tmp, vreg_wei | even_mask | T_z);
+                vpmaddubsw(vmm_tmp, vreg_src, vmm_tmp);
+                vpmaddwd(vmm_tmp, vmm_tmp, vmm_one);
+                vpaddd(vreg_acc, vreg_acc, vmm_tmp);
+                // process odd values
+                vmovdqu8(vmm_tmp, vreg_wei | odd_mask | T_z);
+                vpmaddubsw(vmm_tmp, vreg_src, vmm_tmp);
+                vpmaddwd(vmm_tmp, vmm_tmp, vmm_one);
+                vpaddd(vreg_acc, vreg_acc, vmm_tmp);
+            } else {
+                vpmaddubsw(vmm_tmp, vreg_src, vreg_wei);
+                vpmaddwd(vmm_tmp, vmm_tmp, vmm_one);
+                vpaddd(vreg_acc, vreg_acc, vmm_tmp);
+            }
         }
     };
 
@@ -978,6 +993,14 @@ void _jit_avx512_core_x8s8s32x_fwd_kernel<Vmm>::generate() {
 
         assert(IMPLICATION(!is_zero_point && jcp.dst_dt != data_type::bf16,
                 idx == ker_dw_reg_base_idx));
+    }
+    if (jcp.force_be)
+    {
+        // prepare mask register for even and odd weights
+        mov(reg_scratch, 0x5555555555555555);
+        kmovq(even_mask, reg_scratch);
+        mov(reg_scratch, 0xaaaaaaaaaaaaaaaa);
+        kmovq(odd_mask, reg_scratch);
     }
     if (!jcp.is_depthwise && (!jcp.has_vnni)) {
         xor_(reg_scratch, reg_scratch);
@@ -1462,6 +1485,12 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
         return status::unimplemented;
 
     jcp.has_vnni = mayiuse(avx512_core_vnni);
+
+    jcp.force_be = FORCE_BIT_EXACT && (!jcp.has_vnni); // force bit exact (slower)
+    const bool force_be_supported = is_2d && (!jcp.src_zero_point);
+    if (jcp.force_be && (!force_be_supported))
+        return status::unimplemented;
+
     const bool bf16_req_extra_regs = cd.dst_desc.data_type == data_type::bf16
             && !isa_has_bf16(jcp.isa);
     jcp.is_fast_depthwise = true && jcp.is_depthwise && jcp.has_vnni
@@ -1513,9 +1542,12 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
         memory_desc_t want_wei_md = weights_md;
         memory_desc_init_by_tag(want_wei_md, wei_tag);
         if (jcp.signed_input) {
-            want_wei_md.extra.flags = 0 | compensation_conv_s8s8 | scale_adjust;
+            want_wei_md.extra.flags = 0 | compensation_conv_s8s8;
             want_wei_md.extra.compensation_mask = (1 << 0)
                     + (with_groups && !jcp.is_depthwise ? (1 << 1) : 0);
+        }
+        if (apply_scale_adjust(jcp)) {
+            want_wei_md.extra.flags |= scale_adjust;
             want_wei_md.extra.scale_adjust
                     = mayiuse(avx512_core_vnni) ? 1.f : 0.5f;
         }
@@ -1742,7 +1774,7 @@ status_t jit_avx512_core_x8s8s32x_fwd_kernel::init_conf(jit_conv_conf_t &jcp,
 void jit_avx512_core_x8s8s32x_fwd_kernel::init_scratchpad(
         memory_tracking::registrar_t &scratchpad, const jit_conv_conf_t &jcp,
         const primitive_attr_t &attr) {
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         dim_t count = attr.output_scales_.count_ == 1
                 ? (dim_t)16
                 : attr.output_scales_.count_;

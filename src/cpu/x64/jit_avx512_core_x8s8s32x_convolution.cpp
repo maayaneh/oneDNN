@@ -65,7 +65,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_1d(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = pd()->attr()->output_scales_.scales_;
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         auto local_scales = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_adjusted_scales);
         size_t count = pd()->attr()->output_scales_.count_;
@@ -207,7 +207,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = pd()->attr()->output_scales_.scales_;
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         auto local_scales = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_adjusted_scales);
         size_t count = pd()->attr()->output_scales_.count_;
@@ -385,7 +385,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_2d_dw(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = pd()->attr()->output_scales_.scales_;
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         auto local_scales = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_adjusted_scales);
         size_t count = pd()->attr()->output_scales_.count_;
@@ -507,7 +507,7 @@ status_t jit_avx512_core_x8s8s32x_convolution_fwd_t::execute_forward_3d(
     assert(jcp.nb_ch % jcp.nb_ch_blocking == 0);
 
     const float *oscales = pd()->attr()->output_scales_.scales_;
-    if (jcp.signed_input && (!jcp.has_vnni)) {
+    if (apply_scale_adjust(jcp)) {
         auto local_scales = ctx.get_scratchpad_grantor().template get<float>(
                 key_conv_adjusted_scales);
         size_t count = pd()->attr()->output_scales_.count_;
